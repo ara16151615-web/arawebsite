@@ -14,7 +14,8 @@ h1{font-size:clamp(1.35rem,4vw,2rem);margin:0 0 6px}
 header p{margin:0;font-size:.95rem}
 main{max-width:900px;margin:auto;padding:12px}
 .stage{position:relative;overflow:hidden;background:#2d2b27;border-radius:22px;box-shadow:0 12px 32px #59452a20;aspect-ratio:3/4;max-height:72vh;margin:auto}
-video,canvas#overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+video,canvas#overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+video{transform:none}
 canvas#overlay{pointer-events:none}
 .placeholder{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:25px;color:#fff8e9;background:radial-gradient(circle at 50% 30%,#81745e,#302b25)}
 .placeholder .leaf{font-size:5rem}
@@ -44,7 +45,7 @@ footer{text-align:center;font-size:.8rem;padding:16px;color:#756b5e}
 </header>
 <main>
   <div class="stage" id="stage">
-    <div class="placeholder" id="placeholder"><div><div class="leaf">🍁</div><strong>카메라를 시작해 주세요</strong><p>밝은 곳에서 손바닥을 카메라에 보여 주세요.</p></div></div>
+    <div class="placeholder" id="placeholder"><div><div class="leaf">🍁</div><strong>카메라를 시작해 주세요</strong><p>밝은 곳에서 아이와 커다란 나뭇잎을 화면에 담아 보세요.</p></div></div>
     <video id="video" autoplay playsinline muted></video>
     <canvas id="overlay"></canvas>
   </div>
@@ -55,7 +56,7 @@ footer{text-align:center;font-size:.8rem;padding:16px;color:#756b5e}
   </div>
   <section class="panel">
     <div class="row"><label for="size">나뭇잎 크기</label><input id="size" type="range" min="0.55" max="1.8" step="0.05" value="1"><span id="sizeVal">100%</span></div>
-    <p class="small">손을 인식하면 나뭇잎이 손바닥 근처를 따라 움직여요. 손이 인식되지 않으면 화면 가운데에 나타납니다.</p>
+    <p class="small">후면 카메라로 다른 사람이 아이를 촬영해요. 커다란 나뭇잎은 화면 오른쪽에 고정되어 나타납니다. 아이가 잎사귀를 들고 있는 것처럼 위치를 맞춰 보세요.</p>
   </section>
   <div class="panel status" id="status" role="status">준비됐어요. 카메라 시작을 눌러 주세요. 카메라 권한을 허용해야 작동합니다.</div>
   <section class="panel" id="resultPanel" hidden>
@@ -75,7 +76,7 @@ footer{text-align:center;font-size:.8rem;padding:16px;color:#756b5e}
     <strong>사용 전 확인</strong>
     <ul>
       <li>카메라 사용을 위해 HTTPS 게시 주소가 필요합니다. 파일을 직접 열면 일부 브라우저에서 작동하지 않을 수 있어요.</li>
-      <li>이 버전은 손 랜드마크 인식으로 손바닥 주변에 나뭇잎을 배치합니다. 손가락에 정확히 고정되는 전문 AR 필터와 달리, 기기·조명·손 모양에 따라 위치가 흔들릴 수 있어요.</li>
+      <li>이 버전은 손 인식 없이 커다란 나뭇잎을 화면 오른쪽에 고정해 보여 줍니다. 촬영하는 사람이 아이의 손 위치에 맞춰 화면 구도를 조절해 주세요.</li>
       <li>유아 사진 촬영 시 보호자 동의와 기관의 개인정보 처리 기준을 확인해 주세요.</li>
     </ul>
   </section>
@@ -83,14 +84,13 @@ footer{text-align:center;font-size:.8rem;padding:16px;color:#756b5e}
 <footer>가을을 발견하고, 행복을 찍어요 🌰</footer>
 
 <script type="module">
-import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm";
 const video=document.getElementById('video'), canvas=document.getElementById('overlay'), ctx=canvas.getContext('2d');
 const placeholder=document.getElementById('placeholder'), statusEl=document.getElementById('status');
 const startBtn=document.getElementById('start'), snapBtn=document.getElementById('snap'), resetBtn=document.getElementById('reset');
 const sizeInput=document.getElementById('size'), sizeVal=document.getElementById('sizeVal');
 const resultPanel=document.getElementById('resultPanel'), saved=document.getElementById('saved'), download=document.getElementById('download');
-let stream=null, landmarker=null, running=false, raf=0, lastVideoTime=-1, latestLandmarks=null;
-let leafScale=1, lastX=.5, lastY=.56, lastAngle=0;
+let stream=null, running=false, raf=0;
+let leafScale=1;
 
 const leafSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 340">
 <defs>
@@ -114,41 +114,20 @@ window.addEventListener('resize',fitCanvas);
 sizeInput.addEventListener('input',()=>{leafScale=Number(sizeInput.value);sizeVal.textContent=Math.round(leafScale*100)+'%'});
 async function start(){
  try{
-  startBtn.disabled=true;setStatus('카메라를 준비하고 있어요…');
-  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:960}},audio:false});
+  startBtn.disabled=true;setStatus('후면 카메라를 준비하고 있어요…');
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:960}},audio:false});
   video.srcObject=stream; await video.play(); placeholder.style.display='none'; fitCanvas();
-  setStatus('손 인식 모델을 불러오는 중이에요. 처음에는 잠시 걸릴 수 있어요.');
-  const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
-  landmarker=await HandLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:2});
-  running=true;snapBtn.disabled=false;resetBtn.disabled=false;setStatus('손바닥을 카메라에 보여 주세요. 나뭇잎이 손을 따라옵니다.');drawLoop();
- }catch(e){console.error(e);startBtn.disabled=false;setStatus('시작하지 못했어요. HTTPS 주소인지, 카메라 권한을 허용했는지 확인해 주세요. 오류: '+(e.message||e))}
+  running=true;snapBtn.disabled=false;resetBtn.disabled=false;setStatus('후면 카메라가 켜졌어요. 아이와 나뭇잎이 함께 보이도록 구도를 맞춰 주세요 🍁');drawLoop();
+ }catch(e){console.error(e);startBtn.disabled=false;setStatus('카메라를 시작하지 못했어요. HTTPS 주소인지, 카메라 권한을 허용했는지 확인해 주세요. 오류: '+(e.message||e))}
 }
 function drawLoop(){
  if(!running)return;
- if(video.readyState>=2&&video.currentTime!==lastVideoTime){
-  lastVideoTime=video.currentTime;
-  try{
-   const res=landmarker.detectForVideo(video,performance.now());
-   if(res.landmarks&&res.landmarks.length){
-    const lm=res.landmarks[0];
-    // Palm anchor: weighted center of wrist and palm knuckles; x is mirrored for the selfie display.
-    const x=(lm[0].x+lm[5].x+lm[9].x+lm[13].x+lm[17].x)/5;
-    const y=(lm[0].y+lm[5].y+lm[9].y+lm[13].y+lm[17].y)/5;
-    lastX=.78*x+.22*lastX; lastY=.78*y+.22*lastY;
-    const dx=lm[9].x-lm[0].x, dy=lm[9].y-lm[0].y;
-    lastAngle=Math.atan2(dy,dx)*.18;
-    setStatus('손을 찾았어요! 나뭇잎과 함께 포즈를 취해 보세요 🍁');
-   }else setStatus('손이 잘 보이도록 카메라 앞에 손바닥을 보여 주세요.');
-  }catch(e){console.warn(e)}
- }
  const w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);
  if(leafImg.complete&&leafImg.naturalWidth){
-  const found=landmarker&&latestLandmarks;
-  // Mirror coordinates to match mirrored preview. Keep leaf beside the palm, not fully over it.
-  let x=(1-lastX)*w, y=lastY*h;
-  if(!landmarker){x=w*.5;y=h*.56}
-  const leafW=Math.min(w*.64, h*.62)*leafScale, leafH=leafW*1.13;
-  ctx.save();ctx.translate(x,y);ctx.rotate(lastAngle);ctx.globalAlpha=.96;
+  // Large decorative leaf fixed on the right side of the rear-camera preview.
+  const leafW=Math.min(w*.78,h*.82)*leafScale, leafH=leafW*1.13;
+  const x=w*.73, y=h*.63;
+  ctx.save();ctx.translate(x,y);ctx.rotate(-.08);ctx.globalAlpha=.97;
   ctx.shadowColor='rgba(40,20,8,.28)';ctx.shadowBlur=12;ctx.shadowOffsetY=5;
   ctx.drawImage(leafImg,-leafW*.5,-leafH*.58,leafW,leafH);ctx.restore();
  }
@@ -158,12 +137,12 @@ snapBtn.addEventListener('click',()=>{
  if(!video.videoWidth){setStatus('먼저 카메라를 시작해 주세요.');return}
  const out=document.createElement('canvas');out.width=video.videoWidth;out.height=video.videoHeight;
  const o=out.getContext('2d');
- // Mirror video to match selfie preview
- o.translate(out.width,0);o.scale(-1,1);o.drawImage(video,0,0,out.width,out.height);
- // draw overlay image in the same mirrored coordinate system
+ // Rear camera is not mirrored; reproduce the same crop and fixed leaf overlay in the saved photo.
+ o.drawImage(video,0,0,out.width,out.height);
  const scale=out.width/canvas.clientWidth, w=canvas.clientWidth,h=canvas.clientHeight;
- let x=lastX*w,y=lastY*h,leafW=Math.min(w*.64,h*.62)*leafScale,leafH=leafW*1.13;
- o.save();o.translate(x*scale,y*scale);o.rotate(lastAngle);
+ const leafW=Math.min(w*.78,h*.82)*leafScale,leafH=leafW*1.13;
+ o.save();o.translate(w*.73*scale,h*.63*scale);o.rotate(-.08);
+ o.shadowColor='rgba(40,20,8,.28)';o.shadowBlur=12*scale;o.shadowOffsetY=5*scale;
  o.drawImage(leafImg,-leafW*.5*scale,-leafH*.58*scale,leafW*scale,leafH*scale);o.restore();
  const url=out.toDataURL('image/png');saved.src=url;download.href=url;resultPanel.hidden=false;saved.style.display='block';
  resultPanel.scrollIntoView({behavior:'smooth',block:'start'});
